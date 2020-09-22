@@ -53,7 +53,7 @@ mssqlConnection.connect(err => {
     let promiseLastDate = new Promise(function(resolve)
     {
         mssqlConnection.request().query(`select top 1 [DtPriem] from [ResIsmEnergy] 
-            Where [Command] = 66 order by [DtPriem]`, (err, result) => 
+            Where [Command] = 66 order by [DtPriem] DESC`, (err, result) => 
             {
                 if (err) throw err;
 
@@ -85,6 +85,8 @@ mssqlConnection.connect(err => {
                         }else
                         {
                             console.log(`Считываются данные`);
+                            console.log(`Последнее время опроса: ${lastDate}`);
+                            console.log(`Текущее время: ${DtPriem}`);
                         };
                     });
             });
@@ -95,7 +97,7 @@ mssqlConnection.connect(err => {
 
                 let parseLastDate = new Date(Date.parse(lastDate));
 
-                parseLastDate = new Date(2020, 7, 19, 12, 0, 0);
+                //parseLastDate = new Date(2020, 7, 19, 12, 0, 0);
 
                 console.log(`${parseLastDate.getFullYear()}-${parseLastDate.getMonth() + 1}-${parseLastDate.getDate()} ${parseLastDate.getHours()}:${parseLastDate.getMinutes()}:${parseLastDate.getSeconds()}`);
                 mssqlConnection.request().query(`select [IdShet] from ResIsmEnergy 
@@ -185,7 +187,7 @@ function createTrendLine(data)
 
     for (let x = changeData[0].x; x <= changeData[data.length - 1].x; x.setSeconds(x.getSeconds() + 1))
     {
-        let y = b * (x) + a;
+        let y = b * x + a;
         trendLine.push([new Date(x), y]);
     }
 
