@@ -129,10 +129,6 @@ mssqlConnection.connect(err => {
                         let {NumShet} = result.recordset[0];
                         dataProcessing(result.recordset, NumShet);
                     }   
-                    let lol = 0;
-                    setTimeout(() => lol = 1, 1000);
-
-                    if (lol == 1) return;
                 });
         }
     });
@@ -359,8 +355,8 @@ function createTrendLine(data, prop)
     for (let obj of data)
     {
         let x;
-        //.setHours(new Date(obj.DtPriem).getHours() + 3)
         let y;
+        
         switch(prop)
         {
             case "TokA":
