@@ -13,6 +13,14 @@ let mssqlConfig = {
     pollingTimer: mssqlConnectionWorkbook.Sheets['MSSQL']['B6'].v,
     beginningOfTheDay: mssqlConnectionWorkbook.Sheets['MSSQL']['B7'].w,
     isMeterReading: mssqlConnectionWorkbook.Sheets['MSSQL']['B8'].v,
+    // options: {
+    //     'requestTimeout': 130000,
+    //     'idleTimeoutMillis': 130000
+    // },
+    // dialectOptions: {
+    //     "requestTimeout": 300000
+    //     },
+    // idleTimeoutMillis: 130000,
 }
 
 let mysqlConfig = {
@@ -23,23 +31,9 @@ let mysqlConfig = {
     database: mysqlConnectionWorkbook.Sheets['MYSQL']['B6'].v,
 }
 
-const mssqlConnection = new mssql.ConnectionPool({
-    user: mssqlConfig.user,
-    password: mssqlConfig.password,
-    server: mssqlConfig.server,
-    database: mssqlConfig.database
-});
+const mssqlConnection = new mssql.ConnectionPool(mssqlConfig);
 
-const mysqlConnection = mysql.createConnection({
-    host: mysqlConfig.host,
-    port: mysqlConfig.port,
-    user: mysqlConfig.user,
-    password: mysqlConfig.password,
-    database: mysqlConfig.database,
-});
-
-
-const pollingTimer = mssqlConfig.pollingTimer; //Таймер опроса БД в миллисекундах
+const mysqlConnection = mysql.createConnection(mysqlConfig);
 
 mysqlConnection.connect(function (err) 
 {
@@ -47,11 +41,12 @@ mysqlConnection.connect(function (err)
     console.log("Подключился к MySql");
 });
 
-mssqlConnection.connect(err => {
+mssqlConnection.connect(async err => {
     if (err) throw err;
 
     if (mssqlConfig.isMeterReading) setStartDate();
 
+    //Занесение показаний счётчиков на начало суток
     // setTimeout(function request()
     // {
     //     let date = new Date(Date.now());
@@ -69,69 +64,14 @@ mssqlConnection.connect(err => {
 
     console.log("Подключился к MsSQL");
 
-    mssqlConnection.request().query(`SELECT WorkNumber from [Shet]`, (err, result) =>
+    setTimeout(() =>
     {
-        if (err) throw err;
+        sampleWorkNumber();
+    }, 100);
 
-        for (let row of result.recordset)
-        {
-            let {WorkNumber} = row;
+    // sampleWorkNumber(41, 60);
 
-            mssqlConnection.request().query(`use [Астра]
-                declare @num varchar(100), @KT int, @KN int
-                /**/
-                Set @num = ${WorkNumber}
-                /**/
-                set @KT = (select KtrTok from Shet where WorkNumber = @num and prActiv = 1) 
-                Set @KN = (select KtrNapr from Shet where WorkNumber = @num and prActiv = 1) 
-                select IdDtLabel as IdDtLabel1, DtPriem as Dttok, 
-                ActMin*@KT As TokA, 
-                ReactPl*@KT As Tokb, 
-                ReactMin*@KT As tokC into #newt 
-                from [Астра].[dbo].[ResIsmEnergy]
-                where [Command]=66 and 
-                [Астра].[dbo].[ResIsmEnergy].[IdShet]=(select idShet from [Астра].[dbo].[shet] 
-                                                        where [WorkNumber]= @num and prActiv=1)
-                select IdDtLabel as IdDtLabe2, DtPriem as DtNapr,  
-                ActMin*@KN As NaprA, 
-                ReactPl*@KN As Naprb,
-                ReactMin*@KN As NaprC into #newn 
-                from [Астра].[dbo].[ResIsmEnergy]
-                where [Command]=65 and [Астра].[dbo].[ResIsmEnergy].[IdShet]=(select idShet from [Астра].[dbo].[shet]
-                                                    where [WorkNumber]= @num and prActiv=1)
-                select IdDtLabel as IdDtLabe3, 
-                DtPriem as DtCos, 
-                ActMin As CosA,
-                ReactPl As Cosb,
-                ReactMin As CosC 
-                into #newc
-                from [Астра].[dbo].[ResIsmEnergy]
-                where [Command]=64 and [Астра].[dbo].[ResIsmEnergy].[IdShet]=(select idShet from [Астра].[dbo].[shet]
-                                                    where [WorkNumber]= @num and prActiv=1) and (DtPriem BETWEEN '20200227 11:36:20' and '20200227 11:40:20')
-                select @num as NumShet, 
-                Dtcos, CosA, CosB, CosC, 
-                DtNapr, NaprA, Naprb, NaprC, 
-                DtTok, TokA, Tokb, TokC
-                from #newc
-                left join #newn
-                on #newc.IdDtLabe3 = #newn.IdDtLabe2
-                left join #newt
-                on #newt.IdDtLabel1 = #newc.IdDtLabe3
-                order by Dttok
-                drop table #newn
-                drop table #newt
-                drop table #newc`, (err, result) =>
-                {
-                    if (err) throw err;        
-
-                    if (result.recordset[0] != undefined) 
-                    {
-                        let {NumShet} = result.recordset[0];
-                        dataProcessing(result.recordset, NumShet);
-                    }   
-                });
-        }
-    });
+    // sampleWorkNumber(61, 80);
     
     // let promiseLastDate = new Promise(function(resolve)
     // {
@@ -231,7 +171,7 @@ mssqlConnection.on('error', err => {
 function dataProcessing(data, numShet)
 {
     //console.log(data);
-    console.log(numShet);
+    //console.log(numShet);
     let tokA = createTrendLine(data, "TokA");
     let tokB = createTrendLine(data, "Tokb");
     let tokC = createTrendLine(data, "TokC");
@@ -277,7 +217,7 @@ function dataProcessing(data, numShet)
             }
         );
     }
-    console.log('-----------------------------------------------');
+    //console.log('-----------------------------------------------');
 }
 
 //Линейная аппроксимация
@@ -476,7 +416,7 @@ function SlopeCalculation(data)
 
     let b = sumNumerator / sumDenominator;
 
-    console.log(`Наклон: ${b}`);
+    //console.log(`Наклон: ${b}`);
 
     return b;
 }
@@ -500,16 +440,122 @@ function LineSegmentCalculation(data, b)
 
     let a = +(yAverage - b * xAverage).toFixed(2);
 
-    console.log(`Отрезок: ${a}`);
+    //console.log(`Отрезок: ${a}`);
 
     return a;
 }
+
+//Получение мгновенных значений для всех счётчиков
+async function sampleWorkNumber()
+{
+    let shetSet = new Set();
+
+    mssqlConnection.request().query(`SELECT WorkNumber, idShet FROM [Астра].[dbo].[Shet] Where prActiv=1 ORDER BY [idShet]`, async(err, result) =>
+        {
+            if (err) throw err;
+            
+            for (let row of result.recordset)
+            {
+                let {WorkNumber, idShet} = row;
+                //console.log(WorkNumber);
+
+                if (!shetSet.has(WorkNumber))
+                {
+                    getInstantaneousValues(WorkNumber, idShet);
+                }
+                
+                shetSet.add(WorkNumber);
+            }
+        });
+        // return new Promise(resolve => setTimeout(
+        //     () =>
+        //     {
+        //         const val = Math.trunc(Math.random() * 100);
+        //         resolve(val);
+        //     }, 2000
+        // ));
+}
+
+let counter = 0;
+//Получение мгновенных значений по WorkNumber
+async function getInstantaneousValues(WorkNumber, idShet)
+{
+    mssqlConnection.query(`use [Астра]
+        declare @num varchar(100), @KT int, @KN int
+        /**/
+        Set @num = ${WorkNumber}
+        /**/
+        set @KT = (select distinct KtrTok from Shet where WorkNumber = @num and prActiv = 1) 
+        Set @KN = (select distinct KtrNapr from Shet where WorkNumber = @num and prActiv = 1) 
+        
+        select IdDtLabel as IdDtLabel1, DtPriem as Dttok, 
+        ActMin*@KT As TokA, 
+        ReactPl*@KT As Tokb, 
+        ReactMin*@KT As tokC into #newt 
+        from [Астра].[dbo].[ResIsmEnergy]
+        where [Command]=66 and 
+        [Астра].[dbo].[ResIsmEnergy].[IdShet]=${idShet}
+
+        select IdDtLabel as IdDtLabe2, DtPriem as DtNapr,  
+        ActMin*@KN As NaprA, 
+        ReactPl*@KN As Naprb,
+        ReactMin*@KN As NaprC into #newn 
+        from [Астра].[dbo].[ResIsmEnergy]
+        where [Command]=65 and [Астра].[dbo].[ResIsmEnergy].[IdShet]=${idShet}
+
+        select IdDtLabel as IdDtLabe3, 
+        DtPriem as DtCos, 
+        ActMin As CosA,
+        ReactPl As Cosb,
+        ReactMin As CosC 
+        into #newc
+        from [Астра].[dbo].[ResIsmEnergy]
+        where [Command]=64 and [Астра].[dbo].[ResIsmEnergy].[IdShet]=${idShet} and (DtPriem BETWEEN '20200227 11:37:00' and '20200227 11:43:20')
+
+        select @num as NumShet, 
+        Dtcos, CosA, CosB, CosC, 
+        DtNapr, NaprA, Naprb, NaprC, 
+        DtTok, TokA, Tokb, TokC
+        from #newc
+        left join #newn
+        on #newc.IdDtLabe3 = #newn.IdDtLabe2
+        left join #newt
+        on #newt.IdDtLabel1 = #newc.IdDtLabe3
+        order by Dttok
+        drop table #newn
+        drop table #newt
+        drop table #newc`, async(err, result) =>
+        {
+            if (err) throw err;       
+
+            if (result.recordset[0] != undefined) 
+            {
+                counter++;
+                let {NumShet} = result.recordset[0];
+                dataProcessing(result.recordset, NumShet);
+                //console.log(NumShet);
+                console.log(counter);
+                console.log(NumShet);
+                console.log(new Date(Date.now()));
+
+                //2020-10-04T21:41:49.611Z
+                //2020-10-04T21:43:28.697Z
+
+
+                //2020-10-04T21:56:28.841Z
+                //2020-10-04T21:58:13.390Z
+            }       
+        });
+}
+
 
 
 function SendDataMySql({numShet, fullDate, tokA, tokB, tokC, naprA, naprB, naprC, cosA, cosB, cosC})
 {
     let date = `${fullDate.getFullYear()}-${fullDate.getMonth() + 1}-${fullDate.getDate()}`;
     let time = `${fullDate.getHours() - 3}:${fullDate.getMinutes()}:${fullDate.getSeconds()}`;
+
+    //console.log(numShet);
 
     mysqlConnection.query(`INSERT pokaz_mgnznach(num_schet, date, time, tok_A, tok_B, tok_C, napr_A, napr_B, napr_C, cos_A, cos_B, cos_C) 
         VALUES (${numShet}, '${date}', '${time}', ${tokA}, ${tokB}, ${tokC}, ${naprA}, ${naprB}, ${naprC}, ${cosA}, ${cosB}, ${cosC})`, function (err)
