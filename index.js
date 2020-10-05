@@ -63,15 +63,14 @@ mssqlConnection.connect(async err => {
     // }, 10000);
 
     console.log("Подключился к MsSQL");
+    let lastDate = new Date(Date.now());
 
-    setTimeout(() =>
+    setInterval(() =>
     {
-        sampleWorkNumber();
-    }, 100);
+        sampleWorkNumber(lastDate);
+        lastDate = new Date(Date.now());
+    }, mssqlConfig.pollingTimer);
 
-    // sampleWorkNumber(41, 60);
-
-    // sampleWorkNumber(61, 80);
     
     // let promiseLastDate = new Promise(function(resolve)
     // {
@@ -446,9 +445,14 @@ function LineSegmentCalculation(data, b)
 }
 
 //Получение мгновенных значений для всех счётчиков
-async function sampleWorkNumber()
+async function sampleWorkNumber(lastDate)
 {
     let shetSet = new Set();
+    let dateNow = new Date(Date.now());
+    dateNow.setHours(dateNow.getHours() + 3);
+    lastDate.setHours(lastDate.getHours() + 3);
+
+    console.log(`Опрос данных между ${lastDate.toISOString()} and ${dateNow.toISOString()}`);
 
     mssqlConnection.request().query(`SELECT WorkNumber, idShet FROM [Астра].[dbo].[Shet] Where prActiv=1 ORDER BY [idShet]`, async(err, result) =>
         {
@@ -457,11 +461,10 @@ async function sampleWorkNumber()
             for (let row of result.recordset)
             {
                 let {WorkNumber, idShet} = row;
-                //console.log(WorkNumber);
 
                 if (!shetSet.has(WorkNumber))
                 {
-                    getInstantaneousValues(WorkNumber, idShet);
+                    getInstantaneousValues(WorkNumber, idShet, lastDate, dateNow);
                 }
                 
                 shetSet.add(WorkNumber);
@@ -478,9 +481,11 @@ async function sampleWorkNumber()
 
 let counter = 0;
 //Получение мгновенных значений по WorkNumber
-async function getInstantaneousValues(WorkNumber, idShet)
+async function getInstantaneousValues(WorkNumber, idShet, lastDate, dateNow)
 {
-    mssqlConnection.query(`use [Астра]
+    //20200227 11:37:00
+
+    mssqlConnection.query(`use [${mssqlConfig.database}]
         declare @num varchar(100), @KT int, @KN int
         /**/
         Set @num = ${WorkNumber}
@@ -492,16 +497,16 @@ async function getInstantaneousValues(WorkNumber, idShet)
         ActMin*@KT As TokA, 
         ReactPl*@KT As Tokb, 
         ReactMin*@KT As tokC into #newt 
-        from [Астра].[dbo].[ResIsmEnergy]
+        from [${mssqlConfig.database}].[dbo].[ResIsmEnergy]
         where [Command]=66 and 
-        [Астра].[dbo].[ResIsmEnergy].[IdShet]=${idShet}
+        [${mssqlConfig.database}].[dbo].[ResIsmEnergy].[IdShet]=${idShet}
 
         select IdDtLabel as IdDtLabe2, DtPriem as DtNapr,  
         ActMin*@KN As NaprA, 
         ReactPl*@KN As Naprb,
         ReactMin*@KN As NaprC into #newn 
-        from [Астра].[dbo].[ResIsmEnergy]
-        where [Command]=65 and [Астра].[dbo].[ResIsmEnergy].[IdShet]=${idShet}
+        from [${mssqlConfig.database}].[dbo].[ResIsmEnergy]
+        where [Command]=65 and [${mssqlConfig.database}].[dbo].[ResIsmEnergy].[IdShet]=${idShet}
 
         select IdDtLabel as IdDtLabe3, 
         DtPriem as DtCos, 
@@ -509,8 +514,8 @@ async function getInstantaneousValues(WorkNumber, idShet)
         ReactPl As Cosb,
         ReactMin As CosC 
         into #newc
-        from [Астра].[dbo].[ResIsmEnergy]
-        where [Command]=64 and [Астра].[dbo].[ResIsmEnergy].[IdShet]=${idShet} and (DtPriem BETWEEN '20200227 11:37:00' and '20200227 11:43:20')
+        from [${mssqlConfig.database}].[dbo].[ResIsmEnergy]
+        where [Command]=64 and [${mssqlConfig.database}].[dbo].[ResIsmEnergy].[IdShet]=${idShet} and (DtPriem BETWEEN '${lastDate.toISOString()}' and '${dateNow.toISOString()}')
 
         select @num as NumShet, 
         Dtcos, CosA, CosB, CosC, 
@@ -538,17 +543,11 @@ async function getInstantaneousValues(WorkNumber, idShet)
                 console.log(NumShet);
                 console.log(new Date(Date.now()));
 
-                //2020-10-04T21:41:49.611Z
-                //2020-10-04T21:43:28.697Z
-
-
-                //2020-10-04T21:56:28.841Z
-                //2020-10-04T21:58:13.390Z
+                //2020-10-04T23:35:03.853Z
+                //2020-10-04T23:36:42.184Z
             }       
         });
 }
-
-
 
 function SendDataMySql({numShet, fullDate, tokA, tokB, tokC, naprA, naprB, naprC, cosA, cosB, cosC})
 {
@@ -577,7 +576,7 @@ function setStartDate()
 
     //console.log(currentDate.getDate());
     //console.log(tomorrowDate);
-    mssqlConnection.request().query(`use Астра
+    mssqlConnection.request().query(`use [${mssqlConfig.database}]
         declare @dt date, @dt1 date
         set @dt= DATEFROMPARTS(${currentDate.getFullYear()}, ${currentDate.getMonth() + 1}, ${currentDate.getDate()})
         set @dt1 = DATEFROMPARTS(${tomorrowDate.getFullYear()}, ${tomorrowDate.getMonth() + 1}, ${tomorrowDate.getDate()})
@@ -589,9 +588,9 @@ function setStartDate()
             , @dt
             ,DtPriem
             
-        FROM [Астра].[dbo].[ResIsmEnergy] 
+        FROM [${mssqlConfig.database}].[dbo].[ResIsmEnergy] 
         
-        left join [Астра].[dbo].[Shet] 
+        left join [${mssqlConfig.database}].[dbo].[Shet] 
         on ResIsmEnergy.IdShet= Shet.IdShet
             left join BalansGroupShet
             on ResIsmEnergy.IdShet= BalansGroupShet.IdShet
