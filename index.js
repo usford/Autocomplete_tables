@@ -1,171 +1,241 @@
 import mysql from 'mysql2';
 import XLSX from 'xlsx';
 import mssql from 'mssql';
+import userInput from 'synchronous-user-input';
+import fs from 'fs';
+import util from 'util';
 
 let mssqlConnectionWorkbook = XLSX.readFile('config/config_mssql.xlsx');
 let mysqlConnectionWorkbook = XLSX.readFile('config/config_mysql.xlsx');
+let mssqlConnection;
+let mysqlConnection;
+let mssqlConfig;
+let mysqlConfig;
 
-let mssqlConfig = {
-    user: mssqlConnectionWorkbook.Sheets['MSSQL']['B2'].v,
-    password: mssqlConnectionWorkbook.Sheets['MSSQL']['B3'].w,
-    server: mssqlConnectionWorkbook.Sheets['MSSQL']['B4'].v,
-    database: mssqlConnectionWorkbook.Sheets['MSSQL']['B5'].v,
-    pollingTimer: mssqlConnectionWorkbook.Sheets['MSSQL']['B6'].v,
-    beginningOfTheDay: mssqlConnectionWorkbook.Sheets['MSSQL']['B7'].w,
-    isMeterReading: mssqlConnectionWorkbook.Sheets['MSSQL']['B8'].v,
-    // options: {
-    //     'requestTimeout': 130000,
-    //     'idleTimeoutMillis': 130000
-    // },
-    // dialectOptions: {
-    //     "requestTimeout": 300000
-    //     },
-    // idleTimeoutMillis: 130000,
-}
+main();
 
-let mysqlConfig = {
-    host: mysqlConnectionWorkbook.Sheets['MYSQL']['B2'].v,
-    port: mysqlConnectionWorkbook.Sheets['MYSQL']['B3'].w,
-    user: mysqlConnectionWorkbook.Sheets['MYSQL']['B4'].v,
-    password: (mysqlConnectionWorkbook.Sheets['MYSQL']['B5'] != undefined) ? mysqlConnectionWorkbook.Sheets['MYSQL']['B5'].w : '',
-    database: mysqlConnectionWorkbook.Sheets['MYSQL']['B6'].v,
-}
 
-const mssqlConnection = new mssql.ConnectionPool(mssqlConfig);
-
-const mysqlConnection = mysql.createConnection(mysqlConfig);
-
-mysqlConnection.connect(function (err) 
+function main()
 {
-    if (err) throw err;
-    console.log("Подключился к MySql");
-});
+    readFiles();
+}
 
-mssqlConnection.connect(async err => {
-    if (err) throw err;
+function readFiles()
+{
 
-    if (mssqlConfig.isMeterReading) setStartDate();
-
-    //Занесение показаний счётчиков на начало суток
-    // setTimeout(function request()
-    // {
-    //     let date = new Date(Date.now());
-
-    //     let [hours, minutes] = mssqlConfig.beginningOfTheDay.split(`:`);
-
-    //     if (date.getHours() == +hours && date.getMinutes() == +minutes)
-    //     {
-    //         setStartDate();
-    //     }else
-    //     {
-    //         setTimeout(request, 10000);
-    //     }
-    // }, 10000);
-
-    console.log("Подключился к MsSQL");
-    let lastDate = new Date(Date.now());
-
-    setInterval(() =>
+    let readFileMsSql = new Promise((resolve) =>
     {
-        sampleWorkNumber(lastDate);
-        lastDate = new Date(Date.now());
-    }, mssqlConfig.pollingTimer);
+        fs.readFile(`config/config_mssql.json`, (err, data) =>
+        {
+            if (err)
+            {
+                if (err.code == `ENOENT`)
+                {
+                    mssqlConfig = setMsSqlConfig();
+                    resolve(mssqlConfig);
+                }
+            }else
+            {
+                mssqlConfig = JSON.parse(data);
+                resolve(mssqlConfig);
+            }
+        });
+    });
 
+    let readFileMySql = new Promise((resolve) =>
+    {
+        fs.readFile(`config/config_mysql.json`, (err, data) =>
+        {
+            if (err)
+            {
+                if (err.code == `ENOENT`)
+                {
+                    mysqlConfig = setMySqlConfig();
+                    
+                    resolve(mysqlConfig);
+                }
+            }else
+            {
+                mysqlConfig = JSON.parse(data);
+                resolve(mysqlConfig);
+            }
+        });
+    });
+
+
+    let promiseFiles = [readFileMsSql, readFileMySql];
+
+    Promise.all(promiseFiles).then(() =>
+    {
+        mySqlConnect(mysqlConfig);
+        msSqlConnect(mssqlConfig);
+    });
+}
+
+// let mssqlConfig = {
+//     user: mssqlConnectionWorkbook.Sheets['MSSQL']['B2'].v,
+//     password: mssqlConnectionWorkbook.Sheets['MSSQL']['B3'].w,
+//     server: mssqlConnectionWorkbook.Sheets['MSSQL']['B4'].v,
+//     database: mssqlConnectionWorkbook.Sheets['MSSQL']['B5'].v,
+//     pollingTimer: mssqlConnectionWorkbook.Sheets['MSSQL']['B6'].v,
+//     beginningOfTheDay: mssqlConnectionWorkbook.Sheets['MSSQL']['B7'].w,
+//     isMeterReading: mssqlConnectionWorkbook.Sheets['MSSQL']['B8'].v,
+// }
+
+// let mysqlConfig = {
+//     host: mysqlConnectionWorkbook.Sheets['MYSQL']['B2'].v,
+//     port: mysqlConnectionWorkbook.Sheets['MYSQL']['B3'].w,
+//     user: mysqlConnectionWorkbook.Sheets['MYSQL']['B4'].v,
+//     password: (mysqlConnectionWorkbook.Sheets['MYSQL']['B5'] != undefined) ? mysqlConnectionWorkbook.Sheets['MYSQL']['B5'].w : '',
+//     database: mysqlConnectionWorkbook.Sheets['MYSQL']['B6'].v,
+// }
+
+function mySqlConnect()
+{
+    mysqlConnection = mysql.createConnection(mysqlConfig);
+
+    mysqlConnection.connect(function (err) 
+    {
+        if (err)
+        {
+            console.dir("Произошла ошибка с подключением к базе данных MYSQL");
+            throw err
+        };
+        console.log("Подключился к MySql");
+    });
+}
+
+function msSqlConnect()
+{
+    mssqlConnection = new mssql.ConnectionPool(mssqlConfig);
+
+    mssqlConnection.connect(async err => {
+        if (err)
+        {
+            console.dir("Произошла ошибка с подключением к базе данных MSSQL");
+            console.log(err);
+            process.exit(0);     
+        };
+        console.log("Подключился к MsSQL");
     
-    // let promiseLastDate = new Promise(function(resolve)
-    // {
-    //     mssqlConnection.request().query(`select top 1 [DtPriem] from [ResIsmEnergy] 
-    //         Where [Command] = 66 order by [DtPriem] DESC`, (err, result) => 
-    //         {
-    //             if (err) throw err;
+        if (mssqlConfig.isMeterReading) setStartDate();
+    
+        //Занесение показаний счётчиков на начало суток
+        // setTimeout(function request()
+        // {
+        //     let date = new Date(Date.now());
+    
+        //     let [hours, minutes] = mssqlConfig.beginningOfTheDay.split(`:`);
+    
+        //     if (date.getHours() == +hours && date.getMinutes() == +minutes)
+        //     {
+        //         setStartDate();
+        //     }else
+        //     {
+        //         setTimeout(request, 10000);
+        //     }
+        // }, 10000);
+    
+        let lastDate = new Date(Date.now());
+    
+        setInterval(() =>
+        {
+            sampleWorkNumber(lastDate);
+            lastDate = new Date(Date.now());
+        }, mssqlConfig.pollingTimer);
+    
+        
+        // let promiseLastDate = new Promise(function(resolve)
+        // {
+        //     mssqlConnection.request().query(`select top 1 [DtPriem] from [ResIsmEnergy] 
+        //         Where [Command] = 66 order by [DtPriem] DESC`, (err, result) => 
+        //         {
+        //             if (err) throw err;
+    
+        //             //console.log(result.recordset);
+    
+        //             let {DtPriem} = result.recordset[0];
+    
+        //             resolve(DtPriem);
+        //         });
+        // });
+    
+        // promiseLastDate.then(lastDate =>
+        // {
+    
+        //     setInterval(() => 
+        //     {
+        //         let promiseCheckDate = new Promise(function(resolve)
+        //         {
+        //             mssqlConnection.request().query(`select top 1 [DtPriem] from ResIsmEnergy 
+        //                 Where [Command] = 66 order by [DtPriem] DESC`, (err, result) => 
+        //                 {
+        //                     if (err) throw err;
+    
+        //                     let {DtPriem} = result.recordset[0];
+    
+        //                     if (lastDate < DtPriem)
+        //                     {
+        //                         resolve(DtPriem)
+        //                     }else
+        //                     {
+        //                     };
+        //                 });
+        //         });
+    
+        //         promiseCheckDate.then((DtPriem) =>
+        //         {
+    
+        //             let parseLastDate = new Date(Date.parse(lastDate));
+    
+        //             //parseLastDate = new Date(2020, 7, 19, 12, 0, 0);
+    
+        //             console.log(`${parseLastDate.getFullYear()}-${parseLastDate.getMonth() + 1}-${parseLastDate.getDate()} ${parseLastDate.getHours()}:${parseLastDate.getMinutes()}:${parseLastDate.getSeconds()}`);
+        //             mssqlConnection.request().query(`select [IdShet] from ResIsmEnergy 
+        //                 Where [Command] = 66 and ([DtPriem] BETWEEN '${parseLastDate.getFullYear()}-${parseLastDate.getMonth() + 1}-${parseLastDate.getDate()} ${parseLastDate.getHours()}:${parseLastDate.getMinutes()}:${parseLastDate.getSeconds()}'
+        //                 and CURRENT_TIMESTAMP)`, (err, result) => 
+        //                 {
+        //                     if (err) throw err;
+    
+        //                     let arrShet = [];
+    
+        //                     for (let value of result.recordset)
+        //                     {
+        //                         let {IdShet} = value;
+    
+        //                         let shet = arrShet.find(shet => shet.id == IdShet)
+    
+        //                         if (shet)
+        //                         {
+        //                             shet.repetitions += 1;
+        //                         }else
+        //                         {
+        //                             arrShet.push({id: IdShet, repetitions: 2});
+        //                         }
+        //                     }
+    
+    
+        //                     for (let shet of arrShet)
+        //                     {
+        //                         mssqlConnection.request().query(`select top ${shet.repetitions} [IdShet], [ActMin], [DtPriem] from ResIsmEnergy 
+        //                             Where [Command] = 66 and [IdShet] = ${shet.id} order by [DtPriem] DESC`, (err, result) => 
+        //                             {
+        //                                 createTrendLine(result.recordset);
+        //                             });
+        //                     }   
+    
+        //                     lastDate = DtPriem;
+        //                 });
+        //         });
+        //     }, pollingTimer);      
+        //});
+    
+    });
 
-    //             //console.log(result.recordset);
-
-    //             let {DtPriem} = result.recordset[0];
-
-    //             resolve(DtPriem);
-    //         });
-    // });
-
-    // promiseLastDate.then(lastDate =>
-    // {
-
-    //     setInterval(() => 
-    //     {
-    //         let promiseCheckDate = new Promise(function(resolve)
-    //         {
-    //             mssqlConnection.request().query(`select top 1 [DtPriem] from ResIsmEnergy 
-    //                 Where [Command] = 66 order by [DtPriem] DESC`, (err, result) => 
-    //                 {
-    //                     if (err) throw err;
-
-    //                     let {DtPriem} = result.recordset[0];
-
-    //                     if (lastDate < DtPriem)
-    //                     {
-    //                         resolve(DtPriem)
-    //                     }else
-    //                     {
-    //                         console.log(`Считываются данные`);
-    //                         console.log(`Последнее время опроса: ${lastDate}`);
-    //                         console.log(`Текущее время: ${DtPriem}`);
-    //                     };
-    //                 });
-    //         });
-
-    //         promiseCheckDate.then((DtPriem) =>
-    //         {
-    //             console.log("Данные обрабатываются");
-
-    //             let parseLastDate = new Date(Date.parse(lastDate));
-
-    //             //parseLastDate = new Date(2020, 7, 19, 12, 0, 0);
-
-    //             console.log(`${parseLastDate.getFullYear()}-${parseLastDate.getMonth() + 1}-${parseLastDate.getDate()} ${parseLastDate.getHours()}:${parseLastDate.getMinutes()}:${parseLastDate.getSeconds()}`);
-    //             mssqlConnection.request().query(`select [IdShet] from ResIsmEnergy 
-    //                 Where [Command] = 66 and ([DtPriem] BETWEEN '${parseLastDate.getFullYear()}-${parseLastDate.getMonth() + 1}-${parseLastDate.getDate()} ${parseLastDate.getHours()}:${parseLastDate.getMinutes()}:${parseLastDate.getSeconds()}'
-    //                 and CURRENT_TIMESTAMP)`, (err, result) => 
-    //                 {
-    //                     if (err) throw err;
-
-    //                     let arrShet = [];
-
-    //                     for (let value of result.recordset)
-    //                     {
-    //                         let {IdShet} = value;
-
-    //                         let shet = arrShet.find(shet => shet.id == IdShet)
-
-    //                         if (shet)
-    //                         {
-    //                             shet.repetitions += 1;
-    //                         }else
-    //                         {
-    //                             arrShet.push({id: IdShet, repetitions: 2});
-    //                         }
-    //                     }
-
-
-    //                     for (let shet of arrShet)
-    //                     {
-    //                         mssqlConnection.request().query(`select top ${shet.repetitions} [IdShet], [ActMin], [DtPriem] from ResIsmEnergy 
-    //                             Where [Command] = 66 and [IdShet] = ${shet.id} order by [DtPriem] DESC`, (err, result) => 
-    //                             {
-    //                                 createTrendLine(result.recordset);
-    //                             });
-    //                     }   
-
-    //                     lastDate = DtPriem;
-    //                 });
-    //         });
-    //     }, pollingTimer);      
-    //});
-
-});
-
-mssqlConnection.on('error', err => {
-    console.log(`Произошла ошибка ${err}`);
-});
+    mssqlConnection.on('error', err => {
+        console.log(`Ошибка подключения к MsSql: ${err}`);
+    });
+}
 
 function dataProcessing(data, numShet)
 {
@@ -452,9 +522,9 @@ async function sampleWorkNumber(lastDate)
     dateNow.setHours(dateNow.getHours() + 3);
     lastDate.setHours(lastDate.getHours() + 3);
 
-    console.log(`Опрос данных между ${lastDate.toISOString()} and ${dateNow.toISOString()}`);
+    console.log(`Опрос данных между ${lastDate.toISOString()} и ${dateNow.toISOString()}`);
 
-    mssqlConnection.request().query(`SELECT WorkNumber, idShet FROM [Астра].[dbo].[Shet] Where prActiv=1 ORDER BY [idShet]`, async(err, result) =>
+    mssqlConnection.request().query(`SELECT WorkNumber, idShet FROM ${mssqlConfig.database}.[dbo].[Shet] Where prActiv=1 ORDER BY [idShet]`, async(err, result) =>
         {
             if (err) throw err;
             
@@ -464,7 +534,7 @@ async function sampleWorkNumber(lastDate)
 
                 if (!shetSet.has(WorkNumber))
                 {
-                    getInstantaneousValues(WorkNumber, idShet, lastDate, dateNow);
+                    getInstantaneousValues(WorkNumber, idShet, lastDate, dateNow);     
                 }
                 
                 shetSet.add(WorkNumber);
@@ -617,4 +687,60 @@ function setStartDate()
             }
 
         });
+}
+
+//Ручной ввод конфигурации MSSQL
+function setMsSqlConfig()
+{
+    let mssqlConfig = {};
+    console.log(`\n----------Настройка подключения к MsSql---------- \n`);
+    mssqlConfig.server = userInput(`Имя сервера: `);
+    mssqlConfig.user = userInput(`Имя входа: `);
+    mssqlConfig.password = String(userInput(`Пароль: `));
+    mssqlConfig.database = userInput(`Имя базы данных: `);
+    mssqlConfig.pollingTimer = userInput(`Интервал обновления данных, мс (120000): `);
+    mssqlConfig.beginningOfTheDay = userInput(`Время опроса счётчиков на начало суток (hh:mm): `);
+    mssqlConfig.isMeterReading = userInput(`Снять показаний со счётчиков на начало суток сразу после запуска программу (для теста, 1 - да; 2 - нет): `);
+
+    let mssqlConfigJSON = JSON.stringify(mssqlConfig);
+
+    
+    let con = new mssql.ConnectionPool(mssqlConfig);
+    con.connect(function (err) 
+    {
+        if (!err) 
+        {
+            fs.writeFileSync(`config/config_mssql.json`, mssqlConfigJSON);
+        };
+        
+    });
+    return mssqlConfig;
+}
+
+//Ручной ввод конфигурации MYSQL
+function setMySqlConfig()
+{
+    let mysqlConfig = {};
+    console.log(`\n----------Настройка подключения к MySql---------- \n`);
+    mysqlConfig.host = userInput(`Хост: `);
+    mysqlConfig.port = userInput(`Порт: `);
+    mysqlConfig.user = userInput(`Имя пользователя: `);
+    mysqlConfig.password = String(userInput(`Пароль: `));
+
+    if (mysqlConfig.password == " ") mysqlConfig.password = "";
+
+    mysqlConfig.database = userInput(`Имя базы данных: `);
+
+    let mysqlConfigJSON = JSON.stringify(mysqlConfig);
+
+    let con = mysql.createConnection(mysqlConfig);
+    con.connect(function (err) 
+    {
+        if (!err) 
+        {
+            fs.writeFileSync(`config/config_mysql.json`, mysqlConfigJSON); 
+        };       
+    });
+
+    return mysqlConfig;
 }

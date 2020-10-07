@@ -12,6 +12,9 @@
   "dependencies": {
     "mssql": "^6.2.3",
     "mysql2": "^2.1.0",
+    "readline-sync": "^1.4.10",
+    "stdio": "^2.1.1",
+    "synchronous-user-input": "0.0.4",
     "tarn": "^3.0.0",
     "xlsx": "^0.16.6"
   }
