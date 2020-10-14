@@ -3,26 +3,45 @@ import XLSX from 'xlsx';
 import mssql from 'mssql';
 import userInput from 'synchronous-user-input';
 import fs from 'fs';
-import util from 'util';
 
-let mssqlConnectionWorkbook = XLSX.readFile('config/config_mssql.xlsx');
-let mysqlConnectionWorkbook = XLSX.readFile('config/config_mysql.xlsx');
+// let mssqlConnectionWorkbook = XLSX.readFile('config/config_mssql.xlsx');
+// let mysqlConnectionWorkbook = XLSX.readFile('config/config_mysql.xlsx');
 let mssqlConnection;
 let mysqlConnection;
 let mssqlConfig;
 let mysqlConfig;
+let config;
 
 main();
 
 
 function main()
 {
+    // let date = new Date('2020-02-27T11:37:00');
+    // let lol = {
+    //     lastDate: date
+    // }
+
+    // let lolJSON  = JSON.stringify(lol);
+
+    // fs.writeFileSync(`config/config.json`, lolJSON); 
+
     readFiles();
 }
 
 function readFiles()
 {
-
+    fs.readFile(`config/config.json`, (err, data) =>
+    {
+        if (err)
+        {
+            throw err;
+        }else
+        {
+            config = JSON.parse(data);
+        }
+    });
+    
     let readFileMsSql = new Promise((resolve) =>
     {
         fs.readFile(`config/config_mssql.json`, (err, data) =>
@@ -136,99 +155,13 @@ function msSqlConnect()
         //     }
         // }, 10000);
     
-        let lastDate = new Date(Date.now());
+        let lastDate = new Date(config.lastDate);
     
         setInterval(() =>
         {
             sampleWorkNumber(lastDate);
             lastDate = new Date(Date.now());
         }, mssqlConfig.pollingTimer);
-    
-        
-        // let promiseLastDate = new Promise(function(resolve)
-        // {
-        //     mssqlConnection.request().query(`select top 1 [DtPriem] from [ResIsmEnergy] 
-        //         Where [Command] = 66 order by [DtPriem] DESC`, (err, result) => 
-        //         {
-        //             if (err) throw err;
-    
-        //             //console.log(result.recordset);
-    
-        //             let {DtPriem} = result.recordset[0];
-    
-        //             resolve(DtPriem);
-        //         });
-        // });
-    
-        // promiseLastDate.then(lastDate =>
-        // {
-    
-        //     setInterval(() => 
-        //     {
-        //         let promiseCheckDate = new Promise(function(resolve)
-        //         {
-        //             mssqlConnection.request().query(`select top 1 [DtPriem] from ResIsmEnergy 
-        //                 Where [Command] = 66 order by [DtPriem] DESC`, (err, result) => 
-        //                 {
-        //                     if (err) throw err;
-    
-        //                     let {DtPriem} = result.recordset[0];
-    
-        //                     if (lastDate < DtPriem)
-        //                     {
-        //                         resolve(DtPriem)
-        //                     }else
-        //                     {
-        //                     };
-        //                 });
-        //         });
-    
-        //         promiseCheckDate.then((DtPriem) =>
-        //         {
-    
-        //             let parseLastDate = new Date(Date.parse(lastDate));
-    
-        //             //parseLastDate = new Date(2020, 7, 19, 12, 0, 0);
-    
-        //             console.log(`${parseLastDate.getFullYear()}-${parseLastDate.getMonth() + 1}-${parseLastDate.getDate()} ${parseLastDate.getHours()}:${parseLastDate.getMinutes()}:${parseLastDate.getSeconds()}`);
-        //             mssqlConnection.request().query(`select [IdShet] from ResIsmEnergy 
-        //                 Where [Command] = 66 and ([DtPriem] BETWEEN '${parseLastDate.getFullYear()}-${parseLastDate.getMonth() + 1}-${parseLastDate.getDate()} ${parseLastDate.getHours()}:${parseLastDate.getMinutes()}:${parseLastDate.getSeconds()}'
-        //                 and CURRENT_TIMESTAMP)`, (err, result) => 
-        //                 {
-        //                     if (err) throw err;
-    
-        //                     let arrShet = [];
-    
-        //                     for (let value of result.recordset)
-        //                     {
-        //                         let {IdShet} = value;
-    
-        //                         let shet = arrShet.find(shet => shet.id == IdShet)
-    
-        //                         if (shet)
-        //                         {
-        //                             shet.repetitions += 1;
-        //                         }else
-        //                         {
-        //                             arrShet.push({id: IdShet, repetitions: 2});
-        //                         }
-        //                     }
-    
-    
-        //                     for (let shet of arrShet)
-        //                     {
-        //                         mssqlConnection.request().query(`select top ${shet.repetitions} [IdShet], [ActMin], [DtPriem] from ResIsmEnergy 
-        //                             Where [Command] = 66 and [IdShet] = ${shet.id} order by [DtPriem] DESC`, (err, result) => 
-        //                             {
-        //                                 createTrendLine(result.recordset);
-        //                             });
-        //                     }   
-    
-        //                     lastDate = DtPriem;
-        //                 });
-        //         });
-        //     }, pollingTimer);      
-        //});
     
     });
 
@@ -292,13 +225,6 @@ function dataProcessing(data, numShet)
 //Линейная аппроксимация
 function createTrendLine(data, prop)
 {
-    //console.log(data);
-    // data = [
-    //     {ActMin: 0.35, DtPriem: "2020-09-22T09:00:00.000Z"},
-    //     {ActMin: 0.36, DtPriem: "2020-09-22T09:00:20.000Z"},
-    //     {ActMin: 0.35, DtPriem: "2020-09-22T09:00:40.000Z"},
-    //     {ActMin: 0.36, DtPriem: "2020-09-22T09:01:00.000Z"},
-    // ];
 
     switch(prop)
     {
@@ -606,15 +532,14 @@ async function getInstantaneousValues(WorkNumber, idShet, lastDate, dateNow)
             if (result.recordset[0] != undefined) 
             {
                 counter++;
-                let {NumShet} = result.recordset[0];
+                let {NumShet, DtNapr} = result.recordset[0];
                 dataProcessing(result.recordset, NumShet);
                 //console.log(NumShet);
                 console.log(counter);
                 console.log(NumShet);
-                console.log(new Date(Date.now()));
+                //console.log(new Date(Date.now()));
+                console.log(DtNapr)
 
-                //2020-10-04T23:35:03.853Z
-                //2020-10-04T23:36:42.184Z
             }       
         });
 }
