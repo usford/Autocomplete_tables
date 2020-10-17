@@ -3,6 +3,7 @@ import XLSX from 'xlsx';
 import mssql from 'mssql';
 import userInput from 'synchronous-user-input';
 import fs from 'fs';
+import { count } from 'console';
 
 // let mssqlConnectionWorkbook = XLSX.readFile('config/config_mssql.xlsx');
 // let mysqlConnectionWorkbook = XLSX.readFile('config/config_mysql.xlsx');
@@ -155,13 +156,18 @@ function msSqlConnect()
         //     }
         // }, 10000);
     
+        let dateNow = new Date(config.currentDate);
         let lastDate = new Date(config.lastDate);
+        dateNow.setHours(dateNow.getHours() + 3);
+        lastDate.setHours(lastDate.getHours() + 3);
     
-        setInterval(() =>
-        {
-            sampleWorkNumber(lastDate);
-            lastDate = new Date(Date.now());
-        }, mssqlConfig.pollingTimer);
+        // setInterval(() =>
+        // {
+        //     sampleWorkNumber(lastDate);
+        //     lastDate = new Date(Date.now());
+        // }, mssqlConfig.pollingTimer);
+
+        sampleWorkNumber(lastDate, dateNow);
     
     });
 
@@ -185,12 +191,6 @@ function dataProcessing(data, numShet)
     let cosA = createTrendLine(data, "CosA");
     let cosB = createTrendLine(data, "CosB");
     let cosC = createTrendLine(data, "CosC");
-    // console.log(cosA);
-    // console.log('-----------------------------------------------');
-    // console.log(cosB);
-    // console.log('-----------------------------------------------');
-    // console.log(cosC);
-    // console.log('-----------------------------------------------');
     // console.log(naprA);
     // console.log('-----------------------------------------------');
     // console.log(naprB);
@@ -200,22 +200,23 @@ function dataProcessing(data, numShet)
     //console.log(naprA);
     //console.log(data);
     //console.log(naprA);
+    //console.log(tokA.length, naprA.length, cosA.length);
 
-    for (let i = 0; i < cosA.length; i++)
+    for (let i = 0; i < naprA.length; i++)
     {
         SendDataMySql(
             {
                 numShet: numShet, 
                 fullDate: naprA[i].x,
-                tokA: tokA[i].y.toFixed(2),
-                tokB: tokB[i].y.toFixed(2),
-                tokC: tokC[i].y.toFixed(2),
-                naprA: naprA[i].y.toFixed(2),
-                naprB: naprB[i].y.toFixed(2),
-                naprC: naprC[i].y.toFixed(2),
-                cosA: cosA[i].y.toFixed(1),
-                cosB: cosB[i].y.toFixed(1),
-                cosC: cosC[i].y.toFixed(1), 
+                tokA: tokA[ (tokA[i] == undefined) ? i - 1 : i ].y.toFixed(2),
+                tokB: tokB[ (tokB[i] == undefined) ? i - 1 : i ].y.toFixed(2),
+                tokC: tokC[ (tokC[i] == undefined) ? i - 1 : i ].y.toFixed(2),
+                naprA: naprA[ (naprA[i] == undefined) ? i - 1 : i ].y.toFixed(2),
+                naprB: naprB[ (naprB[i] == undefined) ? i - 1 : i ].y.toFixed(2),
+                naprC: naprC[ (naprC[i] == undefined) ? i - 1 : i ].y.toFixed(2),
+                cosA: cosA[ (cosA[i] == undefined) ? i - 1 : i ].y.toFixed(1),
+                cosB: cosB[ (cosB[i] == undefined) ? i - 1 : i ].y.toFixed(1),
+                cosC: cosC[ (cosC[i] == undefined) ? i - 1 : i ].y.toFixed(1),
             }
         );
     }
@@ -286,11 +287,14 @@ function createTrendLine(data, prop)
     // console.log(data);
 
     let changeData = [];
+    //console.log(data);
 
     for (let obj of data)
     {
         let x;
         let y;
+
+        //console.log(prop);
         
         switch(prop)
         {
@@ -358,9 +362,9 @@ function createTrendLine(data, prop)
             }
         }
         
-        changeData.push({x: x, y: y})
+        changeData.push({x: x, y: y});
+        //console.log(x, y);
     }
-
     //console.log(changeData);
     
 
@@ -441,41 +445,66 @@ function LineSegmentCalculation(data, b)
 }
 
 //Получение мгновенных значений для всех счётчиков
-async function sampleWorkNumber(lastDate)
+async function sampleWorkNumber(lastDate, dateNow)
 {
-    let shetSet = new Set();
-    let dateNow = new Date(Date.now());
+    console.log(`Опрос данных между ${lastDate.toISOString()} и ${dateNow.toISOString()}`);
+
+    //let amountId = 0;
+    // new Promise (resolve =>
+    // {
+    //     mssqlConnection.request().query(`SELECT COUNT(idShet) FROM ${mssqlConfig.database}.[dbo].[Shet] Where prActiv=1`, async(err, result) =>
+    //     {
+    //         if (err) throw err;
+
+    //         for (let row of result.recordset)
+    //         {
+    //             let value = Object.values(row);
+    //             amountId = value[0];
+    //         }
+
+    //         resolve(alternateRead(1));
+    //     });
+    // })
+
+    alternateRead(1);
+
+    
+
+    
+    // return new Promise(resolve => setTimeout(
+    //     () =>
+    //     {
+    //         const val = Math.trunc(Math.random() * 100);
+    //         resolve(val);
+    //     }, 2000
+    // ));
+}
+
+//Поочередное считывание
+function alternateRead(pos)
+{
+    let dateNow = new Date(config.currentDate);
+    let lastDate = new Date(config.lastDate);
     dateNow.setHours(dateNow.getHours() + 3);
     lastDate.setHours(lastDate.getHours() + 3);
 
-    console.log(`Опрос данных между ${lastDate.toISOString()} и ${dateNow.toISOString()}`);
-
-    mssqlConnection.request().query(`SELECT WorkNumber, idShet FROM ${mssqlConfig.database}.[dbo].[Shet] Where prActiv=1 ORDER BY [idShet]`, async(err, result) =>
+    mssqlConnection.request().query(`SELECT WorkNumber, idShet FROM ( 
+        SELECT WorkNumber, idShet, ROW_NUMBER() OVER (ORDER BY [idShet]) as row FROM ${mssqlConfig.database}.[dbo].[Shet] Where prActiv=1
+       ) a WHERE row >= ${pos} and row <= ${pos}`, async(err, result) =>
         {
             if (err) throw err;
+            //console.log(amountId);
             
             for (let row of result.recordset)
             {
                 let {WorkNumber, idShet} = row;
 
-                if (!shetSet.has(WorkNumber))
-                {
-                    getInstantaneousValues(WorkNumber, idShet, lastDate, dateNow);     
-                }
-                
-                shetSet.add(WorkNumber);
+                getInstantaneousValues(WorkNumber, idShet, lastDate, dateNow);    
             }
         });
-        // return new Promise(resolve => setTimeout(
-        //     () =>
-        //     {
-        //         const val = Math.trunc(Math.random() * 100);
-        //         resolve(val);
-        //     }, 2000
-        // ));
 }
 
-let counter = 0;
+let counter = 1;
 //Получение мгновенных значений по WorkNumber
 async function getInstantaneousValues(WorkNumber, idShet, lastDate, dateNow)
 {
@@ -531,16 +560,23 @@ async function getInstantaneousValues(WorkNumber, idShet, lastDate, dateNow)
 
             if (result.recordset[0] != undefined) 
             {
-                counter++;
-                let {NumShet, DtNapr} = result.recordset[0];
-                dataProcessing(result.recordset, NumShet);
+                let {NumShet} = result.recordset[0];
+                console.log(`Порядок: ${counter}`);
+                console.log(`WorkNumber: ${NumShet}`);
+                console.log(`Время опроса: ${new Date(Date.now())}`);
+                console.log(`---------------------------------`);
+                if (result.recordset.length >= 2)
+                {
+                    dataProcessing(result.recordset, NumShet);
+                };
+                
                 //console.log(NumShet);
-                console.log(counter);
-                console.log(NumShet);
+                
                 //console.log(new Date(Date.now()));
-                console.log(DtNapr)
-
-            }       
+                
+            } 
+            counter++;
+            alternateRead(counter);
         });
 }
 
